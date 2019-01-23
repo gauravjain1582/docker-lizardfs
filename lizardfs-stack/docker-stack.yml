@@ -1,0 +1,82 @@
+version: '3.6'
+services:
+  mfsmaster:
+    image: gauravjain1582/lizardfs:latest
+    command: master
+    environment:
+      MFSMASTER_AUTO_RECOVERY: 1
+    networks:
+      - lizardfs
+    volumes:
+      - /lizardfs/mfsmaster:/var/lib/mfs
+    deploy:
+      mode: global
+#      placement:
+#        constraints:
+#          - node.labels.lizardfs.master-personality==master
+#  mfsmaster-shadow:
+#    image: gauravjain1582/lizardfs:latest
+#    command: master
+#    networks:
+#      - lizardfs
+#    environment:
+#      MFSMASTER_PERSONALITY: shadow
+#    volumes:
+#      - /lizardfs/mfsmaster:/var/lib/mfs
+#    deploy:
+#      mode: global
+#      placement:
+#        constraints:
+#          - node.labels.lizardfs.master-personality==shadow
+  chunkserver:
+    image: gauravjain1582/lizardfs:latest
+    command: chunkserver
+    networks:
+      - lizardfs
+    environment:
+      # This lets you run the chunkserver with less available disk space
+      MFSCHUNKSERVER_HDD_LEAVE_SPACE_DEFAULT: 400Mi # 4Gi is the default
+      MFSHDD_1: /mnt/mfshdd
+    volumes:
+      - /lizardfs/chunkserver:/mnt/mfshdd
+    deploy:
+      mode: global
+
+  cgiserver:
+    image: gauravjain1582/lizardfs:latest
+    command: cgiserver
+    networks:
+      - lizardfs
+    restart: on-failure
+    ports:
+      - 8099:80
+    deploy:
+      replicas: 1
+
+  docker-plugin:
+    #image: gauravjain1582/docker-cli:latest
+    image: kadimasolutions/docker-run-d:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - "--restart=always -v /var/lib/docker/plugins/lizardfs/propagated-mount:/mnt/docker-volumes/:rshared -v /run/docker/plugins/lizardfs:/run/docker/plugins/ --net lizardfs_lizardfs --cap-add SYS_ADMIN --device=/dev/fuse:/dev/fuse --security-opt=apparmor:unconfined -e ROOT_VOLUME_NAME=lizardfs -e LOG_LEVEL=debug -e REMOTE_PATH=/docker/volumes -e LOCAL_PATH=/var/lib/docker/plugins/lizardfs/propagated-mount -e MOUNT_OPTIONS='-o big_writes -o cacheexpirationtime=500 -o readaheadmaxwindowsize=1024' gauravjain1582/lizardfs-volume-driver"
+    environment:
+      CONTAINER_NAME: lizardfs-plugin
+    deploy:
+      mode: global
+
+  lizardfs-client:
+    #image: gauravjain1582/docker-cli:latest
+    image: kadimasolutions/docker-run-d:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command:
+      - "--restart=always --net lizardfs_lizardfs --cap-add SYS_ADMIN --device=/dev/fuse:/dev/fuse --security-opt=apparmor:unconfined gauravjain1582/lizardfs client"
+    environment:
+      CONTAINER_NAME: lizardfs-client
+    deploy:
+      mode: global
+
+networks:
+  lizardfs:
+    attachable: true
